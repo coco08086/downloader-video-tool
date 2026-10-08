@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>影片下載器</title>
+<style>
+:root {
+  --bg: #0a0a0a;
+  --card: #111111;
+  --raise: #171717;
+  --well: #0b0b0b;
+  --line: #1f1f1f;
+  --line-2: #2a2a2a;
+  --text: #f4f4f4;
+  --text-2: #9c9c9c;
+  --text-3: #5f5f5f;
+  --accent: #ff5b1f;
+  --accent-soft: rgba(255,91,31,.14);
+  --ok: #3ddc84;
+  --err: #ff4d4d;
+  --sans: "Segoe UI Variable Text", "Segoe UI", "Microsoft JhengHei UI", "Microsoft JhengHei", system-ui, sans-serif;
+  --mono: "Cascadia Mono", "JetBrains Mono", Consolas, "Microsoft JhengHei UI", monospace;
+  --ease: cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 13.5px/1.45 var(--sans);
+  overflow: hidden; user-select: none; -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; }
+svg { display: block; }
+.cap { font: 600 10.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+
+/* ---------- 標題列 ---------- */
+.titlebar { height: 44px; display: flex; align-items: center; gap: 14px; padding: 0 6px 0 16px; border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 10px; }
+.logo { width: 20px; height: 20px; border-radius: 5px; background: var(--accent); display: grid; place-items: center; color: #0a0a0a; }
+.logo svg { width: 13px; height: 13px; }
+.brand .ver { color: var(--text-3); font: 10.5px var(--mono); }
+.drag { flex: 1; align-self: stretch; display: flex; align-items: center; justify-content: center; gap: 14px; }
+/* 刻度尺：顯示整體進度 */
+.ruler { position: relative; width: 300px; height: 16px; }
+.ruler::before {
+  content: ""; position: absolute; inset: 4px 0 0;
+  background:
+    repeating-linear-gradient(90deg, #3a3a3a 0 1px, transparent 1px 30px) 0 0 / 100% 12px no-repeat,
+    repeating-linear-gradient(90deg, #262626 0 1px, transparent 1px 6px) 0 6px / 100% 6px no-repeat;
+}
+.ruler .fill { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--accent); transition: width .5s var(--ease); }
+.ruler .mark { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: var(--accent); transition: left .5s var(--ease), opacity .3s; opacity: 0; }
+.ruler.on .mark { opacity: 1; }
+.status { display: flex; align-items: center; gap: 7px; color: var(--text-3); min-width: 92px; }
+.status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.status.on { color: var(--text); }
+.status.on .dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); animation: blink 1.4s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.win { display: flex; }
+.win button { width: 40px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--text-3); transition: background .15s, color .15s; }
+.win button:hover { background: var(--raise); color: var(--text); }
+.win button.close:hover { background: var(--err); color: #fff; }
+.win svg { width: 13px; height: 13px; }
+
+/* ---------- 版面 ---------- */
+main { height: calc(100% - 44px); display: grid; grid-template-columns: 392px minmax(0, 1fr); gap: 12px; padding: 12px; }
+.col { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.stack { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin-right: -6px; padding-right: 6px; }
+.stack::-webkit-scrollbar, .list::-webkit-scrollbar, .log pre::-webkit-scrollbar { width: 6px; }
+.stack::-webkit-scrollbar-thumb, .list::-webkit-scrollbar-thumb, .log pre::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 6px; }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.card-h { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--text-3); }
+.card-h .idx { color: var(--accent); }
+.card-h .ttl { color: var(--text-2); }
+.card-h .zh { font-size: 12px; color: var(--text-3); letter-spacing: .04em; }
+.sp { flex: 1; }
+
+/* ---------- 01 來源 ---------- */
+.well { background: var(--well); border: 1px solid var(--line); border-radius: 10px; transition: border-color .15s, background .15s; }
+.well:focus-within { border-color: #444; }
+.src.drop { border-color: var(--accent); background: #120a07; }
+textarea {
+  display: block; width: 100%; height: 112px; resize: none; border: 0; outline: 0; background: transparent;
+  padding: 11px 12px; font: 12.5px/1.65 var(--mono); color: var(--text); user-select: text; white-space: pre; overflow: auto;
+}
+textarea::placeholder { color: var(--text-3); font-family: var(--sans); font-size: 13px; }
+.src-foot { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.sites { color: var(--text-3); letter-spacing: .08em; }
+.count { color: var(--text-3); }
+.count.has { color: var(--accent); }
+.ghost {
+  height: 26px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px;
+  color: var(--text-2); border: 1px solid var(--line-2); transition: border-color .15s, color .15s, background .15s;
+}
+.ghost:hover { color: var(--text); border-color: #444; background: var(--raise); }
+.ghost:active { transform: translateY(1px); }
+.ghost svg { width: 11px; height: 11px; }
+.ghost[hidden] { display: none; }
+
+/* ---------- 02 格式 ---------- */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--well); border: 1px solid var(--line); border-radius: 10px; }
+.seg button { height: 34px; border-radius: 7px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-2); font-weight: 600; transition: background .2s, color .2s; }
+.seg button svg { width: 14px; height: 14px; }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--text); color: #0a0a0a; }
+.sub-h { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 8px; color: var(--text-3); }
+.sub-h b { color: var(--accent); }
+.grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.grid.audio { grid-template-columns: repeat(4, 1fr); }
+.q {
+  height: 48px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  background: var(--well); border: 1px solid var(--line); transition: background .15s, border-color .15s, color .15s;
+}
+.q b { font-size: 13.5px; font-weight: 650; line-height: 1; }
+.q small { font: 9px/1 var(--mono); letter-spacing: .06em; color: var(--text-3); white-space: nowrap; }
+.q:hover { border-color: #3a3a3a; }
+.q.on { background: var(--text); border-color: var(--text); color: #0a0a0a; }
+.q.on small { color: #666; }
+
+/* ---------- 03 選項 ---------- */
+.rows { display: flex; flex-direction: column; }
+.row { display: flex; align-items: center; gap: 12px; min-height: 46px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; min-height: 36px; padding-bottom: 6px; }
+.row .lbl { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.row .lbl small { font: 9.5px/1 var(--mono); letter-spacing: .1em; color: var(--text-3); text-transform: uppercase; }
+.toggle { position: relative; width: 34px; height: 18px; border-radius: 999px; background: #262626; flex: none; transition: background .2s; }
+.toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: #8a8a8a; transition: transform .25s var(--ease), background .2s; }
+.toggle.on { background: var(--accent); }
+.toggle.on::after { transform: translateX(16px); background: #fff; }
+select {
+  appearance: none; height: 28px; padding: 0 26px 0 10px; border-radius: 7px; outline: 0; cursor: pointer;
+  font: 600 10.5px var(--mono); letter-spacing: .1em; color: var(--text);
+  background: var(--well) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M.5.5l3.5 3.5 3.5-3.5' stroke='%239c9c9c' fill='none'/%3E%3C/svg%3E") no-repeat right 10px center;
+  border: 1px solid var(--line-2);
+}
+select:hover { border-color: #444; }
+select option { background: #151515; color: var(--text); }
+
+/* ---------- 04 輸出 ---------- */
+.out { display: flex; gap: 6px; }
+.path { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; outline: 0; background: var(--well); font: 11.5px var(--mono); color: var(--text-2); user-select: text; }
+.path:focus { border-color: #444; color: var(--text); }
+.sq { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; flex: none; color: var(--text-2); border: 1px solid var(--line-2); transition: color .15s, border-color .15s, background .15s; }
+.sq:hover { color: var(--text); border-color: #444; background: var(--raise); }
+.sq svg { width: 15px; height: 15px; }
+
+/* ---------- 開始 ---------- */
+.go {
+  flex: none; height: 54px; border-radius: 12px; display: flex; align-items: center; gap: 12px; padding: 0 18px;
+  background: var(--text); color: #0a0a0a; transition: background .2s, transform .1s;
+}
+.go:hover { background: var(--accent); }
+.go:active { transform: scale(.985); }
+.go svg { width: 18px; height: 18px; }
+.go .t { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+.go kbd { font: 600 10px var(--mono); letter-spacing: .1em; padding: 4px 7px; border-radius: 5px; background: rgba(0,0,0,.1); }
+
+/* ---------- 05 佇列 ---------- */
+.queue { display: flex; flex-direction: column; min-height: 0; padding: 0; position: relative; overflow: hidden; }
+.queue > .card-h { padding: 14px 14px 0; margin-bottom: 14px; }
+.stats { display: flex; gap: 22px; padding: 0 14px 14px; border-bottom: 1px solid var(--line); }
+.stat { display: flex; flex-direction: column; gap: 8px; }
+.stat b { font: 600 24px/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.stat.act b { color: var(--accent); }
+.stat.err.has b { color: var(--err); }
+.stats .acts { display: flex; align-items: flex-end; gap: 6px; }
+.list { flex: 1; min-height: 0; overflow-y: auto; }
+
+.item { display: grid; grid-template-columns: 44px minmax(0,1fr) 80px; gap: 14px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); animation: itemIn .3s var(--ease) both; transition: background .15s; }
+.item:hover { background: #141414; }
+@keyframes itemIn { from { opacity: 0; transform: translateY(6px); } }
+.item.leaving { animation: itemOut .25s var(--ease) forwards; }
+@keyframes itemOut { to { opacity: 0; transform: translateX(16px); } }
+.ring { position: relative; width: 44px; height: 44px; }
+.ring > svg { width: 44px; height: 44px; transform: rotate(-90deg); }
+.ring .trk { stroke: #222; }
+.ring .val { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .45s var(--ease), stroke .2s; }
+.ring .pct { position: absolute; inset: 0; display: grid; place-items: center; font: 600 10.5px var(--mono); font-variant-numeric: tabular-nums; }
+.ring .ico { position: absolute; inset: 0; display: none; place-items: center; }
+.ring .ico svg { width: 16px; height: 16px; }
+.item.queued .ring > svg, .item.parsing .ring > svg { animation: spin 1.4s linear infinite; }
+.item.queued .val { stroke: #444; }
+@keyframes spin { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
+.item.processing .val { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { stroke-opacity: .45; } }
+.item.done .val { stroke: var(--ok); }
+.item.error .val { stroke: var(--err); }
+.item.canceled .val { stroke: #3a3a3a; }
+.item:is(.done, .error, .canceled) .pct { display: none; }
+.item:is(.done, .error, .canceled) .ico { display: grid; }
+.item.done .ico { color: var(--ok); }
+.item.error .ico { color: var(--err); }
+.item.canceled .ico { color: var(--text-3); }
+.info { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta { font: 10.5px/1.2 var(--mono); letter-spacing: .04em; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 13px; }
+.bar { position: relative; height: 2px; background: #222; border-radius: 2px; overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--text); transition: width .45s var(--ease); }
+.bar i::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 14px; background: var(--accent); }
+.item.done .bar i { background: var(--ok); width: 100% !important; }
+.item:is(.done, .error, .canceled, .queued, .parsing) .bar i::after { display: none; }
+.item.error .bar i { width: 100% !important; background: rgba(255,77,77,.45); }
+.item.canceled .bar i { width: 100% !important; background: #2a2a2a; }
+.line { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+.state { flex: 1; min-width: 0; font: 10.5px/1.2 var(--mono); letter-spacing: .04em; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.item.done .state { color: var(--ok); }
+.item.error .state { color: var(--err); }
+.item.canceled .state { color: var(--text-3); }
+.line .ghost { height: 22px; padding: 0 8px; display: none; }
+.item.done .reveal { display: inline-flex; }
+.item:is(.done, .error, .canceled):hover .rm { display: inline-flex; }
+.thumb { width: 80px; height: 45px; border-radius: 6px; overflow: hidden; background: #181818; border: 1px solid var(--line); display: grid; place-items: center; color: var(--text-3); position: relative; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(1); opacity: .75; transition: filter .6s, opacity .6s; }
+.item.done .thumb img { filter: none; opacity: 1; }
+.thumb > svg { width: 16px; height: 16px; }
+.thumb .kind { position: absolute; left: 4px; bottom: 4px; padding: 2px 4px; border-radius: 3px; background: rgba(0,0,0,.78); color: var(--text); font-size: 8.5px; letter-spacing: .08em; }
+
+.empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--text-3); }
+.empty svg { width: 120px; height: 120px; margin-bottom: 4px; }
+.empty .cap { color: var(--text-2); }
+.empty p { font-size: 12.5px; }
+
+.foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); color: var(--text-3); }
+.foot .ok { color: var(--ok); }
+.foot .bad { color: #ffb020; }
+
+/* ---------- 記錄 ---------- */
+.log {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 58%; z-index: 5; display: flex; flex-direction: column;
+  background: #0c0c0c; border-top: 1px solid var(--line-2); box-shadow: 0 -20px 40px rgba(0,0,0,.5);
+  transform: translateY(101%); visibility: hidden; transition: transform .35s var(--ease), visibility 0s .35s;
+}
+.log.open { transform: none; visibility: visible; transition: transform .35s var(--ease); }
+.log .card-h { padding: 12px 14px 0; margin-bottom: 10px; }
+.log pre { flex: 1; overflow: auto; padding: 0 14px 14px; font: 11px/1.6 var(--mono); color: var(--text-2); white-space: pre-wrap; word-break: break-all; user-select: text; }
+.log .warn { color: #ffb020; }
+.log .error { color: var(--err); }
+
+/* ---------- 提示 ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: 22px; z-index: 30; display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; border-radius: 10px; background: #161616; border: 1px solid var(--line-2); box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: transform .3s var(--ease), opacity .3s;
+}
+.toast::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.toast.show { transform: translate(-50%, 0); opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0l-5-5m5 5l5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></g></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></g></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-paste" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1"/></g></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-min" viewBox="0 0 24 24"><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-max" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 6v8M12 18v.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
+</svg>
+
+<header class="titlebar pywebview-drag-region">
+  <div class="brand pywebview-drag-region">
+    <div class="logo"><svg><use href="#i-down"/></svg></div>
+    <span class="cap">Video Downloader</span>
+    <span class="ver" id="ver"></span>
+  </div>
+  <div class="drag pywebview-drag-region">
+    <div class="ruler" id="ruler" title="整體進度"><div class="fill"></div><div class="mark"></div></div>
+    <div class="status cap" id="status"><span class="dot"></span><span id="statusText">Idle</span></div>
+  </div>
+  <div class="win">
+    <button id="w-min" title="最小化"><svg><use href="#i-min"/></svg></button>
+    <button id="w-max" title="最大化"><svg><use href="#i-max"/></svg></button>
+    <button id="w-close" class="close" title="關閉"><svg><use href="#i-x"/></svg></button>
+  </div>
+</header>
+
+<main>
+  <div class="col">
+    <div class="stack">
+      <section class="card">
+        <div class="card-h"><span class="cap idx">01</span><span class="cap ttl">Source</span><span class="zh">來源</span><span class="sp"></span><span class="cap count" id="count">0 URL</span></div>
+        <div class="well src" id="src">
+          <textarea id="urls" spellcheck="false" placeholder="貼上影片網址，一行一個&#10;也可以把連結拖曳進來"></textarea>
+        </div>
+        <div class="src-foot">
+          <button class="ghost cap" id="paste"><svg><use href="#i-paste"/></svg>Paste</button>
+          <button class="ghost cap" id="clearUrls" hidden><svg><use href="#i-x"/></svg>Clear</button>
+          <span class="sp"></span>
+          <span class="cap sites">YT · Bilibili · X · IG · TikTok</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><span class="cap idx">02</span><span class="cap ttl">Format</span><span class="zh">格式</span></div>
+        <div class="seg" id="seg">
+          <button data-v="mp4" class="on"><svg><use href="#i-film"/></svg>MP4 影片</button>
+          <button data-v="mp3"><svg><use href="#i-music"/></svg>MP3 音訊</button>
+        </div>
+        <div class="sub-h"><span class="cap" id="qcap">Quality · 畫質</span><b class="cap" id="qsel">Best</b></div>
+        <div class="grid" id="grid"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><span class="cap idx">03</span><span class="cap ttl">Options</span><span class="zh">選項</span></div>
+        <div class="rows">
+          <div class="row"><div class="lbl">影片網址含清單時，下載整份清單<small>Playlist · 關閉時只下載網址那一部</small></div><button class="toggle" id="t-playlist" title="例如 watch?v=…&amp;list=…。純清單網址一律整份下載；YouTube 自動合輯（Mix）永遠只下載那一部"></button></div>
+          <div class="row"><div class="lbl">同時下載字幕<small>Subtitles · zh / en</small></div><button class="toggle" id="t-subs"></button></div>
+          <div class="row"><div class="lbl">使用瀏覽器登入狀態<small>Cookies · 會員 / 私人影片</small></div><select id="browser"></select></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><span class="cap idx">04</span><span class="cap ttl">Output</span><span class="zh">儲存位置</span></div>
+        <div class="out">
+          <input class="path" id="outdir" spellcheck="false">
+          <button class="sq" id="pick" title="選擇資料夾"><svg><use href="#i-folder"/></svg></button>
+          <button class="sq" id="openDir" title="開啟資料夾"><svg><use href="#i-open"/></svg></button>
+        </div>
+      </section>
+    </div>
+
+    <button class="go" id="go"><svg><use href="#i-down"/></svg><span class="t">開始下載</span><span class="sp"></span><kbd>Ctrl ↵</kbd></button>
+  </div>
+
+  <section class="card queue">
+    <div class="card-h"><span class="cap idx">05</span><span class="cap ttl">Queue</span><span class="zh">下載佇列</span></div>
+    <div class="stats">
+      <div class="stat act"><span class="cap">Active</span><b id="nAct">0</b></div>
+      <div class="stat"><span class="cap">Done</span><b id="nDone">0</b></div>
+      <div class="stat err" id="statErr"><span class="cap">Failed</span><b id="nErr">0</b></div>
+      <span class="sp"></span>
+      <div class="acts">
+        <button class="ghost cap" id="cancelAll" hidden><svg><use href="#i-stop"/></svg>Cancel all</button>
+        <button class="ghost cap" id="clearDone" hidden><svg><use href="#i-x"/></svg>Clear</button>
+      </div>
+    </div>
+    <div class="list" id="list">
+      <div class="empty" id="empty">
+        <svg viewBox="0 0 120 120" fill="none">
+          <circle cx="60" cy="60" r="52" stroke="#2a2a2a" stroke-dasharray="1 5.2"/>
+          <circle cx="60" cy="60" r="38" stroke="#1f1f1f" stroke-width="3"/>
+          <path d="M60 2v10M60 108v10M2 60h10M108 60h10" stroke="#333"/>
+          <path d="M60 22a38 38 0 0 1 38 38" stroke="#ff5b1f" stroke-width="3" stroke-linecap="round"/>
+          <path d="M60 47v19m0 0l-7-7m7 7l7-7M51 74h18" stroke="#9c9c9c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="cap">No tasks</span>
+        <p>貼上網址，按「開始下載」</p>
+      </div>
+    </div>
+    <div class="foot">
+      <span class="cap" id="ff">● ffmpeg</span>
+      <span class="sp"></span>
+      <button class="ghost cap" id="logBtn">Log</button>
+      <button class="ghost cap" id="update">Update yt-dlp</button>
+    </div>
+
+    <div class="log" id="log">
+      <div class="card-h"><span class="cap ttl">Log</span><span class="zh">執行記錄</span><span class="sp"></span>
+        <button class="ghost cap" id="logClose"><svg><use href="#i-x"/></svg>Close</button></div>
+      <pre id="logText"></pre>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"><span id="toastText"></span></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { type: "mp4", quality: { mp4: null, mp3: null }, cfg: null };
+let api = null;
+
+/* ---------- 後端連線 ---------- */
+window.addEventListener("pywebviewready", () => init(window.pywebview.api));
+setTimeout(() => { if (!api) init(mockApi()); }, 700);  // 在一般瀏覽器開啟時使用示範模式
+
+async function init(a) {
+  if (api) return;
+  api = a;
+  const cfg = await api.get_config();
+  state.cfg = cfg;
+  $("#ver").textContent = "yt-dlp " + cfg.version;
+  $("#outdir").value = cfg.settings.outdir;
+  $("#t-playlist").classList.toggle("on", !!cfg.settings.playlist_full);
+  $("#t-subs").classList.toggle("on", !!cfg.settings.subs);
+  $("#browser").innerHTML = cfg.browsers.map(b => `<option value="${b.id}">${b.id ? b.label : "Off"}</option>`).join("");
+  $("#browser").value = cfg.settings.browser || "";
+  const ff = $("#ff");
+  ff.textContent = cfg.has_ffmpeg ? "● ffmpeg ready" : "● ffmpeg missing · 高畫質合併 / MP3 不可用";
+  ff.classList.add(cfg.has_ffmpeg ? "ok" : "bad");
+  setType("mp4");
+}
+
+/* ---------- 格式 / 品質 ---------- */
+function qualityList() { return state.type === "mp4" ? state.cfg.video : state.cfg.audio; }
+function setType(t) {
+  state.type = t;
+  $("#seg").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === t));
+  const list = qualityList();
+  state.quality[t] = list[0].id;  // 每次切換都回到最高品質
+  $("#qcap").textContent = t === "mp4" ? "Quality · 畫質" : "Bitrate · 音質";
+  const grid = $("#grid");
+  grid.className = "grid" + (t === "mp3" ? " audio" : "");
+  grid.innerHTML = list.map((q, i) => `<button class="q${i ? "" : " on"}" data-id="${q.id}"><b>${q.label}</b><small>${q.hint}</small></button>`).join("");
+  showQuality(list[0]);
+}
+function showQuality(q) {
+  $("#qsel").textContent = state.type === "mp4" ? (q.id === "best" ? "Best · 自動" : q.label) : (q.id === "vbr" ? "VBR" : q.label + " kbps");
+}
+$("#seg").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (b && b.dataset.v !== state.type) setType(b.dataset.v);
+});
+$("#grid").addEventListener("click", (e) => {
+  const b = e.target.closest(".q");
+  if (!b) return;
+  $("#grid").querySelectorAll(".q").forEach(x => x.classList.toggle("on", x === b));
+  state.quality[state.type] = b.dataset.id;
+  showQuality(qualityList().find(q => q.id === b.dataset.id));
+});
+
+/* ---------- 選項 ---------- */
+document.querySelectorAll(".toggle").forEach(t => t.addEventListener("click", () => { t.classList.toggle("on"); saveSettings(); }));
+$("#browser").addEventListener("change", saveSettings);
+$("#outdir").addEventListener("change", saveSettings);
+function currentSettings() {
+  return {
+    outdir: $("#outdir").value.trim(),
+    playlist_full: $("#t-playlist").classList.contains("on"),
+    subs: $("#t-subs").classList.contains("on"),
+    browser: $("#browser").value,
+  };
+}
+function saveSettings() { api && api.save_settings(currentSettings()); }
+
+/* ---------- 網址 ---------- */
+const URL_RE = /https?:\/\/[^\s"'<>]+/g;
+function parseUrls(text) { return [...new Set(text.match(URL_RE) || [])]; }
+function refreshCount() {
+  const text = $("#urls").value;
+  const n = parseUrls(text).length;
+  const c = $("#count");
+  c.textContent = n ? `${n} URL${n > 1 ? "S" : ""}` : (text.trim() ? "No valid URL" : "0 URL");
+  c.classList.toggle("has", n > 0);
+  $("#clearUrls").hidden = !text.trim();
+}
+$("#urls").addEventListener("input", refreshCount);
+$("#clearUrls").addEventListener("click", () => { $("#urls").value = ""; refreshCount(); $("#urls").focus(); });
+function appendUrls(text) {
+  const ta = $("#urls");
+  const cur = ta.value.replace(/\s+$/, "");
+  ta.value = (cur ? cur + "\n" : "") + text.trim() + "\n";
+  refreshCount();
+}
+$("#paste").addEventListener("click", async () => {
+  const t = await api.paste();
+  if (t && t.trim()) appendUrls(t); else toast("剪貼簿是空的");
+});
+const src = $("#src");
+["dragenter", "dragover"].forEach(ev => document.addEventListener(ev, (e) => { e.preventDefault(); src.classList.add("drop"); }));
+["dragleave", "drop"].forEach(ev => document.addEventListener(ev, (e) => { if (ev === "drop" || !e.relatedTarget) src.classList.remove("drop"); }));
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const t = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
+  if (t) appendUrls(t);
+});
+
+/* ---------- 開始下載 ---------- */
+async function go() {
+  const urls = parseUrls($("#urls").value);
+  if (!urls.length) { toast("請先貼上至少一個影片網址"); $("#urls").focus(); return; }
+  const s = currentSettings();
+  if (!s.outdir) { toast("請選擇儲存位置"); return; }
+  await api.start(urls, { type: state.type, quality: state.quality[state.type], ...s });
+  $("#urls").value = ""; refreshCount();
+}
+$("#go").addEventListener("click", go);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); go(); }
+  if (e.key === "Escape") $("#log").classList.remove("open");
+});
+$("#cancelAll").addEventListener("click", () => api.cancel());
+$("#pick").addEventListener("click", async () => {
+  const d = await api.choose_dir($("#outdir").value);
+  if (d) { $("#outdir").value = d; saveSettings(); }
+});
+$("#openDir").addEventListener("click", () => api.open_path($("#outdir").value));
+
+/* ---------- 佇列 ---------- */
+const items = new Map();   // key -> { el, data }
+const C = 2 * Math.PI * 19;  // 圓環周長
+const FINISHED = ["done", "error", "canceled"];
+const STATES = ["queued", "parsing", "active", "processing", ...FINISHED];
+
+function makeItem(d) {
+  const el = document.createElement("div");
+  el.className = "item";
+  el.innerHTML = `
+    <div class="ring">
+      <svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="19" fill="none" stroke-width="3"/>
+        <circle class="val" cx="22" cy="22" r="19" fill="none" stroke-width="3" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
+      <span class="pct"></span>
+      <span class="ico"><svg><use href="#i-check"/></svg></span>
+    </div>
+    <div class="info">
+      <div class="title"></div>
+      <div class="meta"></div>
+      <div class="bar"><i></i></div>
+      <div class="line"><span class="state"></span>
+        <button class="ghost cap reveal">Show</button><button class="ghost cap rm">Remove</button></div>
+    </div>
+    <div class="thumb"><svg><use href="${d.kind === "mp3" ? "#i-music" : "#i-film"}"/></svg><span class="cap kind">${(d.kind || "mp4").toUpperCase()}</span></div>`;
+  el.querySelector(".rm").onclick = () => removeItem(el);
+  el.querySelector(".reveal").onclick = () => { const it = [...items.values()].find(v => v.el === el); it && api.reveal(it.data.path); };
+  $("#list").prepend(el);
+  return el;
+}
+
+function removeItem(el) {
+  el.classList.add("leaving");
+  for (const [k, v] of items) if (v.el === el) items.delete(k);
+  setTimeout(() => { el.remove(); refreshQueue(); }, 240);
+}
+
+function onItem(d) {
+  let it = items.get(d.key);
+  if (!it && d.replace && items.has(d.replace)) {   // 解析完成：佔位項目變成真正的影片
+    it = items.get(d.replace);
+    items.delete(d.replace);
+    items.set(d.key, it);
+  } else if (!it && !d.title) {
+    return;
+  }
+  if (!it) {
+    it = { el: makeItem(d), data: {} };
+    items.set(d.key, it);
+  }
+  Object.assign(it.data, d);
+  const x = it.data, el = it.el;
+  let st = x.state || "active";
+  if (st === "active" && x.title === x.url && !x.thumb) st = "parsing";
+  STATES.forEach(c => el.classList.toggle(c, c === st));
+
+  const waiting = st === "queued" || st === "parsing";
+  const pct = st === "done" || st === "processing" ? 100 : (x.pct || 0);
+  const ringPct = waiting ? 25 : (FINISHED.includes(st) ? 100 : pct);
+  el.querySelector(".val").style.strokeDashoffset = C * (1 - ringPct / 100);
+  el.querySelector(".pct").textContent = waiting ? "" : Math.floor(pct) + "%";
+  el.querySelector(".ico use").setAttribute("href", st === "done" ? "#i-check" : st === "error" ? "#i-alert" : "#i-x");
+  el.querySelector(".bar i").style.width = (waiting ? 0 : pct) + "%";
+  el.querySelector(".title").textContent = x.title || "";
+  el.querySelector(".title").title = x.title || "";
+  el.querySelector(".meta").textContent = (x.meta || (x.title === x.url ? "" : x.url || "")).toUpperCase();
+  el.querySelector(".state").textContent = x.text || "";
+  el.querySelector(".state").title = x.text || "";
+  if (d.thumb) {
+    const th = el.querySelector(".thumb");
+    const img = new Image();
+    img.referrerPolicy = "no-referrer";
+    img.onload = () => { th.querySelector(":scope > svg")?.remove(); th.prepend(img); };
+    img.src = d.thumb;
+  }
+  refreshQueue();
+}
+
+function refreshQueue() {
+  const all = [...items.values()].map(v => v.data);
+  const busy = all.filter(d => !FINISHED.includes(d.state || "active"));
+  const done = all.filter(d => d.state === "done").length;
+  const fail = all.filter(d => d.state === "error").length;
+  $("#empty").style.display = items.size ? "none" : "";
+  $("#nAct").textContent = busy.length;
+  $("#nDone").textContent = done;
+  $("#nErr").textContent = fail;
+  $("#statErr").classList.toggle("has", fail > 0);
+  $("#cancelAll").hidden = !busy.length;
+  $("#clearDone").hidden = all.length === busy.length;
+  // 標題列：狀態與整體進度
+  $("#status").classList.toggle("on", busy.length > 0);
+  $("#statusText").textContent = busy.length ? `${busy.length} Active` : "Idle";
+  const total = busy.length ? busy.reduce((s, d) => s + (d.state === "processing" ? 100 : d.pct || 0), 0) / busy.length : 0;
+  $("#ruler").classList.toggle("on", busy.length > 0);
+  $("#ruler .fill").style.width = total + "%";
+  $("#ruler .mark").style.left = `calc(${total}% - 1px)`;
+}
+$("#clearDone").addEventListener("click", () => {
+  for (const v of [...items.values()]) if (FINISHED.includes(v.data.state)) removeItem(v.el);
+});
+
+/* ---------- 記錄 / 提示 / 視窗 ---------- */
+const logLines = [];
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function onLog(d) {
+  logLines.push(`<span class="${d.level}">${esc(d.text)}</span>`);
+  if (logLines.length > 600) logLines.splice(0, logLines.length - 600);
+  if ($("#log").classList.contains("open")) renderLog();
+}
+function renderLog() { const p = $("#logText"); p.innerHTML = logLines.join("\n") || "（尚無記錄）"; p.scrollTop = p.scrollHeight; }
+$("#logBtn").addEventListener("click", () => { $("#log").classList.toggle("open"); renderLog(); });
+$("#logClose").addEventListener("click", () => $("#log").classList.remove("open"));
+
+let toastTimer;
+function toast(msg) {
+  $("#toastText").textContent = msg;
+  $("#toast").classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 2600);
+}
+
+$("#update").addEventListener("click", async () => {
+  toast("正在更新 yt-dlp…");
+  const r = await api.update_ytdlp();
+  toast(r.msg || (r.ok ? "更新完成，重新開啟程式即可套用" : "更新失敗，請查看記錄"));
+});
+$("#w-min").onclick = () => api.minimize();
+$("#w-max").onclick = () => api.toggle_maximize();
+$("#w-close").onclick = () => api.close();
+
+/* 後端呼叫的進入點 */
+window.onEvent = (ev, d) => {
+  if (ev === "item") onItem(d);
+  else if (ev === "log") onLog(d);
+  else if (ev === "idle") toast(d.fail ? `全部完成：成功 ${d.ok}、失敗 ${d.fail}` : `全部完成，共 ${d.ok} 個檔案`);
+  else if (ev === "toast") toast(d.text);
+};
+
+/* ---------- 示範模式（只在一般瀏覽器預覽時使用） ---------- */
+function mockApi() {
+  const V = [["best","最高","AUTO"],["4320","8K","4320P"],["2160","4K","2160P"],["1440","2K","1440P"],["1080","1080p","FHD"],["720","720p","HD"],["480","480p","SD"],["360","360p","LOW"],["240","240p","LOWER"],["144","144p","MIN"]];
+  const A = [["320","320","KBPS · MAX"],["vbr","VBR","SMALLER"],["256","256","KBPS"],["192","192","KBPS"],["160","160","KBPS"],["128","128","KBPS"],["96","96","KBPS"],["64","64","KBPS"]];
+  const m = (a) => a.map(([id, label, hint]) => ({ id, label, hint }));
+  let n = 0;
+  return {
+    get_config: async () => ({ version: "demo", has_ffmpeg: true, video: m(V), audio: m(A),
+      browsers: [{ id: "", label: "不使用" }, { id: "chrome", label: "Chrome" }, { id: "edge", label: "Edge" }],
+      settings: { outdir: "C:\\Users\\you\\Downloads", playlist_full: false, subs: false, browser: "" } }),
+    save_settings: async () => {}, paste: async () => "https://www.youtube.com/watch?v=demo",
+    choose_dir: async () => null, open_path: async () => {}, reveal: async () => {}, cancel: async () => {},
+    update_ytdlp: async () => ({ ok: true }), minimize() {}, toggle_maximize() {}, close() {},
+    start: async (urls, p) => {
+      for (const url of urls) {
+        const i = ++n, key = "demo" + i, vkey = key + ":v";
+        onEvent("item", { key, title: url, url, state: "queued", text: "排隊中", kind: p.type, pct: 0 });
+        setTimeout(() => onEvent("item", { key: vkey, replace: key, title: "示範影片 " + i, meta: "Channel · 1080p · 3:21 · 約 48.2 MB", kind: p.type, state: "active", pct: 0, text: "開始下載…" }), 600);
+        let pct = 0;
+        const t = setInterval(() => {
+          pct = Math.min(100, pct + Math.random() * 6);
+          onEvent("item", { key: vkey, pct, text: "5.4 MB/s · 剩 0:12" });
+          if (pct >= 100) { clearInterval(t); onEvent("item", { key: vkey, state: "done", pct: 100, text: "已完成 · 48.2 MB", path: "x" }); }
+        }, 300);
+      }
+    },
+  };
+}
+</script>
+</body>
+</html>

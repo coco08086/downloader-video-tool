@@ -1,0 +1,43 @@
+﻿影片下載器 使用的第三方元件
+================================
+
+本程式內附以下開放原始碼元件，各自依其授權條款散布。
+
+yt-dlp
+  用途：解析與下載影片
+  授權：The Unlicense（公眾領域）
+  原始碼：https://github.com/yt-dlp/yt-dlp
+
+yt-dlp-ejs
+  用途：處理 YouTube 的 JavaScript 驗證
+  授權：Unlicense / MIT（見原始專案）
+  原始碼：https://github.com/yt-dlp/ejs
+
+FFmpeg（bin\ffmpeg.exe、bin\ffprobe.exe 與 bin\*.dll）
+  用途：合併影音、轉換 MP3、嵌入字幕
+  授權：GNU General Public License v3（GPL 版本，完整條款見 bin\FFMPEG_LICENSE.txt）
+  原始碼：https://github.com/FFmpeg/FFmpeg
+  本程式使用的建置版本：https://github.com/yt-dlp/FFmpeg-Builds
+  依 GPL 要求，可於上述網址取得對應的完整原始碼。
+
+Deno（bin\deno.exe）
+  用途：執行 YouTube 驗證所需的 JavaScript
+  授權：MIT License
+  原始碼：https://github.com/denoland/deno
+
+pywebview
+  用途：程式視窗
+  授權：BSD 3-Clause License
+  原始碼：https://github.com/r0x0r/pywebview
+
+pythonnet
+  用途：pywebview 與 Windows 介面之間的橋接
+  授權：MIT License
+  原始碼：https://github.com/pythonnet/pythonnet
+
+Python
+  授權：Python Software Foundation License
+  https://www.python.org/
+
+Microsoft Edge WebView2 Runtime
+  由 Windows 提供，未包含在本程式中。
